@@ -1,0 +1,9 @@
+{
+  "name": "simulador-eolico",
+  "private": true,
+  "type": "module",
+  "description": "Solo para desarrollo: ejecuta las pruebas con npm test. El sitio no necesita build.",
+  "scripts": {
+    "test": "node --test tests/"
+  }
+}

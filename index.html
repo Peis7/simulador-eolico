@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simulador eólico</title>
+  <meta name="description" content="Simulador didáctico de producción de energía eólica: potencia, energía y eficiencia de una turbina o un pequeño parque.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%AC%EF%B8%8F%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+  <script type="module" src="./js/ui.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#visual">Saltar a los resultados</a>
+
+  <header class="site-header">
+    <h1>Simulador de energía eólica</h1>
+    <p>Varíe el viento, la turbina y el ambiente, y observe en tiempo real la potencia, la energía y la eficiencia.
+      <a href="#como-funciona">¿Cómo funciona?</a></p>
+  </header>
+
+  <main class="layout">
+    <!-- ===================== Controles ===================== -->
+    <aside class="controls" aria-label="Controles del simulador">
+
+      <fieldset class="group">
+        <legend>Simulación</legend>
+
+        <div class="control">
+          <div class="control-head">
+            <span class="label" id="mode-label">Modo</span>
+            <button type="button" class="info" aria-expanded="false" aria-controls="mode-help" aria-label="Información sobre el modo">ⓘ</button>
+          </div>
+          <div class="segmented" role="radiogroup" aria-labelledby="mode-label">
+            <input type="radio" name="mode" id="mode-manual" value="manual" checked><label for="mode-manual">Manual</label>
+            <input type="radio" name="mode" id="mode-tiempo" value="tiempo"><label for="mode-tiempo">Tiempo</label>
+          </div>
+          <p class="help" id="mode-help" hidden><strong>Manual:</strong> usted fija el viento con el deslizador y ve el resultado al instante. <strong>Tiempo:</strong> se genera un viento que cambia durante el día (con ráfagas) y se reproduce para acumular energía.</p>
+        </div>
+
+        <div class="control time-only">
+          <div class="control-head">
+            <label for="duration">Duración</label>
+            <button type="button" class="info" aria-expanded="false" aria-controls="duration-help" aria-label="Información sobre la duración">ⓘ</button>
+          </div>
+          <select id="duration">
+            <option value="24">1 día</option>
+            <option value="168">1 semana</option>
+          </select>
+          <p class="help" id="duration-help" hidden>Tiempo total que se simula, en pasos de 10 minutos (144 pasos por día).</p>
+        </div>
+
+        <div class="control time-only">
+          <div class="control-head">
+            <label for="seed">Semilla aleatoria</label>
+            <button type="button" class="info" aria-expanded="false" aria-controls="seed-help" aria-label="Información sobre la semilla">ⓘ</button>
+          </div>
+          <div class="inline">
+            <input type="number" id="seed" min="1" max="999999" step="1" inputmode="numeric">
+            <button type="button" id="new-seed" class="btn">🎲 Nueva semilla</button>
+          </div>
+          <p class="help" id="seed-help" hidden>Número que fija las ráfagas "aleatorias". La misma semilla con la misma configuración produce siempre el mismo viento y la misma energía: útil para comparar en clase.</p>
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Viento</legend>
+
+        <div class="control">
+          <div class="control-head">
+            <label for="wind-speed" id="wind-speed-label">Velocidad del viento a 10 m</label>
+            <button type="button" class="info" aria-expanded="false" aria-controls="wind-speed-help" aria-label="Información sobre la velocidad del viento">ⓘ</button>
+            <output id="wind-speed-out" for="wind-speed"></output>
+          </div>
+          <input type="range" id="wind-speed" min="0" max="30" step="0.1">
+          <p class="help" id="wind-speed-help" hidden>Velocidad medida por una estación meteorológica a 10 m del suelo. La turbina está más alta, donde sopla más fuerte. En modo Tiempo es la velocidad <em>media</em> de la serie.</p>
+        </div>
+
+        <div class="control time-only">
+          <div class="control-head">
+            <label for="daily-amplitude">Variación diaria</label>
+            <button type="button" class="info" aria-expanded="false" aria-controls="daily-amplitude-help" aria-label="Información sobre la variación diaria">ⓘ</button>
+            <output id="daily-amplitude-out" for="daily-amplitude"></output>
+          </div>
+          <input type="range" id="daily-amplitude" min="0" max="0.5" step="0.01">
+          <p class="help" id="daily-amplitude-help" hidden>Cuánto cambia el viento entre la noche y la tarde. Con 0.25 el viento sube hasta un 25 % sobre la media a las 15:00 y baja un 25 % a las 03:00.</p>
+        </div>
+
+        <div class="control time-only">
+          <div class="control-head">
+            <label for="turbulence">Turbulencia</label>
+            <button type="button" class="info" aria-expanded="false" aria-controls="turbulence-help" aria-label="Información sobre la turbulencia">ⓘ</button>
+            <output id="turbulence-out" for="turbulence"></output>
+          </div>
+          <input type="range" id="turbulence" min="0" max="0.4" step="0.01">
+          <p class="help" id="turbulence-help" hidden>Ráfagas y calmas irregulares. Es la desviación típica del ruido como fracción de la velocidad media. El ruido está correlacionado: cambia de forma gradual, no a saltos.</p>
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Turbina</legend>
+
+        <div class="control">
+          <div class="control-head">
+            <label for="turbine-preset">Modelo</label>
+            <button type="button" class="info" aria-expanded="false" aria-controls="turbine-preset-help" aria-label="Información sobre los modelos de turbina">ⓘ</button>
+          </div>
+          <select id="turbine-preset"></select>
+          <p class="help" id="turbine-preset-help" hidden>Turbinas típicas de distintos tamaños. Al mover el diámetro, la torre o la potencia, el modelo pasa a "Personalizada".</p>
+        </div>
+
+        <div class="control">
+          <div class="control-head">
+            <label for="diameter">Diámetro del rotor</label>
+            <button type="button" class="info" aria-expanded="false" aria-controls="diameter-help" aria-label="Información sobre el diámetro">ⓘ</button>
+            <output id="diameter-out" for="diameter"></output>
+          </div>
+          <input type="range" id="diameter" min="5" max="170" step="1">
+          <p class="help" id="diameter-help" hidden>Diámetro del círculo que barren las aspas. La potencia es proporcional al área (D²): duplicar el diámetro cuadruplica la potencia disponible.</p>
+        </div>
+
+        <div class="control">
+          <div class="control-head">
+            <label for="hub-height">Altura de la torre</label>
+            <button type="button" class="info" aria-expanded="false" aria-controls="hub-height-help" aria-label="Información sobre la altura de la torre">ⓘ</button>
+            <output id="hub-height-out" for="hub-height"></output>
+          </div>
+          <input type="range" id="hub-height" min="10" max="150" step="1">
+          <p class="help" id="hub-height-help" hidden>Altura del buje (el centro del rotor). Más arriba el viento es más fuerte porque el suelo lo frena menos.</p>
+        </div>
+
+        <div class="control">
+          <div class="control-head">
+            <label for="rated-power">Potencia nominal</label>
+            <button type="button" class="info" aria-expanded="false" aria-controls="rated-power-help" aria-label="Información sobre la potencia nominal">ⓘ</button>
+            <output id="rated-power-out" for="rated-power"></output>
+          </div>
+          <input type="range" id="rated-power" min="0" max="1000" step="1" aria-describedby="rated-speed">
+          <p class="help" id="rated-power-help" hidden>Máxima potencia que el generador puede entregar. Por encima de la velocidad nominal la turbina "desperdicia" viento a propósito para no sobrecargarse. El deslizador es logarítmico (5 kW – 8 MW).</p>
+          <p class="derived" id="rated-speed"></p>
+        </div>
+
+        <div class="control">
+          <div class="control-head">
+            <label for="cp">Coeficiente de potencia Cp</label>
+            <button type="button" class="info" aria-expanded="false" aria-controls="cp-help" aria-label="Información sobre Cp">ⓘ</button>
+            <output id="cp-out" for="cp"></output>
+          </div>
+          <input type="range" id="cp" min="0.2" max="0.593" step="0.001">
+          <p class="help" id="cp-help" hidden>Fracción de la energía del viento que las aspas convierten en giro. Ninguna turbina puede superar 0.593 (límite de Betz); las modernas logran 0.45–0.50.</p>
+        </div>
+
+        <div class="control">
+          <div class="control-head">
+            <label for="efficiency">Eficiencia η</label>
+            <button type="button" class="info" aria-expanded="false" aria-controls="efficiency-help" aria-label="Información sobre la eficiencia">ⓘ</button>
+            <output id="efficiency-out" for="efficiency"></output>
+          </div>
+          <input type="range" id="efficiency" min="0.8" max="0.98" step="0.01">
+          <p class="help" id="efficiency-help" hidden>Pérdidas de la caja de engranajes, el generador y la electrónica. Con 0.92 se pierde el 8 % de la potencia mecánica.</p>
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Ambiente</legend>
+
+        <div class="control">
+          <div class="control-head">
+            <label for="scenario">Escenario ilustrativo</label>
+            <button type="button" class="info" aria-expanded="false" aria-controls="scenario-help" aria-label="Información sobre los escenarios">ⓘ</button>
+          </div>
+          <select id="scenario"></select>
+          <p class="help" id="scenario-help" hidden>Combinaciones típicas de altitud, temperatura, terreno y viento. Son ejemplos para la clase, <strong>no datos medidos</strong> de un lugar real.</p>
+        </div>
+
+        <div class="control">
+          <div class="control-head">
+            <label for="temperature">Temperatura</label>
+            <button type="button" class="info" aria-expanded="false" aria-controls="temperature-help" aria-label="Información sobre la temperatura">ⓘ</button>
+            <output id="temperature-out" for="temperature"></output>
+          </div>
+          <input type="range" id="temperature" min="-10" max="45" step="1">
+          <p class="help" id="temperature-help" hidden>El aire caliente es menos denso (más "liviano"), así que empuja menos a las aspas: la potencia baja un poco cuando hace calor.</p>
+        </div>
+
+        <div class="control">
+          <div class="control-head">
+            <label for="altitude">Altitud</label>
+            <button type="button" class="info" aria-expanded="false" aria-controls="altitude-help" aria-label="Información sobre la altitud">ⓘ</button>
+            <output id="altitude-out" for="altitude"></output>
+          </div>
+          <input type="range" id="altitude" min="0" max="3000" step="50">
+          <p class="help" id="altitude-help" hidden>Altura del terreno sobre el nivel del mar. Arriba la presión es menor y el aire es menos denso: a 2000 m hay cerca de un 20 % menos de aire que en la costa.</p>
+        </div>
+
+        <div class="control">
+          <div class="control-head">
+            <label for="terrain">Terreno</label>
+            <button type="button" class="info" aria-expanded="false" aria-controls="terrain-help" aria-label="Información sobre el terreno">ⓘ</button>
+          </div>
+          <select id="terrain"></select>
+          <p class="help" id="terrain-help" hidden>La rugosidad del suelo frena el viento cerca de la superficie. Cuanto más rugoso (ciudad, bosque), más crece el viento con la altura (exponente α mayor).</p>
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Parque eólico</legend>
+
+        <div class="control">
+          <div class="control-head">
+            <label for="turbines">Número de turbinas</label>
+            <button type="button" class="info" aria-expanded="false" aria-controls="turbines-help" aria-label="Información sobre el número de turbinas">ⓘ</button>
+            <output id="turbines-out" for="turbines"></output>
+          </div>
+          <input type="range" id="turbines" min="1" max="50" step="1">
+          <p class="help" id="turbines-help" hidden>Turbinas idénticas que reciben el mismo viento. Las potencias y energías mostradas son del parque completo; la curva de potencia es de una sola turbina.</p>
+        </div>
+
+        <div class="control">
+          <div class="control-head">
+            <label for="wake-loss">Pérdidas por estela</label>
+            <button type="button" class="info" aria-expanded="false" aria-controls="wake-loss-help" aria-label="Información sobre las pérdidas por estela">ⓘ</button>
+            <output id="wake-loss-out" for="wake-loss"></output>
+          </div>
+          <input type="range" id="wake-loss" min="0" max="0.3" step="0.01">
+          <p class="help" id="wake-loss-help" hidden>Cada turbina deja detrás un viento más lento y turbulento (estela) que reciben las demás. Solo se aplica cuando hay más de una turbina.</p>
+        </div>
+      </fieldset>
+    </aside>
+
+    <!-- ===================== Visualización ===================== -->
+    <section class="visual" id="visual" aria-label="Resultados">
+
+      <div class="player" id="player" hidden>
+        <div class="player-buttons">
+          <button type="button" id="play-toggle" class="btn btn-primary">▶ Reproducir</button>
+          <button type="button" id="reset-btn" class="btn">⟲ Reiniciar</button>
+        </div>
+        <div class="segmented speed" role="radiogroup" aria-label="Velocidad de reproducción">
+          <input type="radio" name="speed" id="speed-1" value="1" checked><label for="speed-1">1×</label>
+          <input type="radio" name="speed" id="speed-10" value="10"><label for="speed-10">10×</label>
+          <input type="radio" name="speed" id="speed-60" value="60"><label for="speed-60">60×</label>
+        </div>
+        <div class="clock">
+          <span id="sim-clock" aria-live="off">Día 1 · 00:00</span>
+          <progress id="sim-progress" max="1" value="0" aria-label="Avance de la simulación"></progress>
+        </div>
+        <p class="player-note">1× = 10 minutos simulados por segundo.</p>
+      </div>
+
+      <div class="hero">
+        <figure class="turbine-box">
+          <div id="turbine"></div>
+          <p class="turbine-warning" id="turbine-warning" role="status" hidden>⚠ Detenida por seguridad</p>
+          <figcaption id="turbine-caption"></figcaption>
+        </figure>
+
+        <div class="cards" aria-live="polite" aria-atomic="false">
+          <article class="card">
+            <h2>Viento en el buje</h2>
+            <p class="value" id="card-vhub">—</p>
+            <p class="sub" id="card-vhub-sub"></p>
+          </article>
+          <article class="card">
+            <h2>Densidad del aire</h2>
+            <p class="value" id="card-rho">—</p>
+            <p class="sub" id="card-rho-sub"></p>
+          </article>
+          <article class="card">
+            <h2>Potencia disponible</h2>
+            <p class="value" id="card-available">—</p>
+            <p class="sub" id="card-available-sub">En el viento que cruza el rotor</p>
+          </article>
+          <article class="card card-main">
+            <h2>Potencia entregada</h2>
+            <p class="value" id="card-delivered">—</p>
+            <p class="sub" id="card-delivered-sub"></p>
+          </article>
+          <article class="card">
+            <h2>Cp efectivo</h2>
+            <p class="value" id="card-cp">—</p>
+            <p class="sub" id="card-betz"></p>
+            <div class="meter" aria-hidden="true"><span id="betz-bar"></span></div>
+          </article>
+          <article class="card">
+            <h2>Estado</h2>
+            <p class="value state" id="card-state">—</p>
+            <p class="sub" id="card-state-sub"></p>
+          </article>
+          <article class="card">
+            <h2>Energía acumulada</h2>
+            <p class="value" id="card-energy">—</p>
+            <p class="sub" id="card-energy-sub"></p>
+          </article>
+          <article class="card">
+            <h2>Factor de capacidad</h2>
+            <p class="value" id="card-cf">—</p>
+            <p class="sub" id="card-cf-sub"></p>
+          </article>
+        </div>
+      </div>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Curva de potencia</h2>
+          <label class="check"><input type="checkbox" id="show-weibull"> Mostrar distribución del viento (Weibull)</label>
+        </div>
+        <div class="chart-box"><canvas id="power-chart" role="img" aria-label="Curva de potencia de la turbina con el límite de Betz y el punto de operación actual"></canvas></div>
+        <p class="chart-fallback" hidden>No se pudo cargar Chart.js (¿sin conexión a internet?). Los indicadores siguen funcionando.</p>
+      </section>
+
+      <section class="panel" id="time-panel" hidden>
+        <div class="panel-head">
+          <h2>Viento y potencia en el tiempo</h2>
+        </div>
+        <div class="chart-box"><canvas id="time-chart" role="img" aria-label="Gráfica temporal del viento en el buje y la potencia entregada"></canvas></div>
+      </section>
+
+      <div class="two-panels">
+        <section class="panel">
+          <h2>Equivalencias</h2>
+          <p class="panel-sub" id="eq-context"></p>
+          <dl class="stats">
+            <div><dt>Hogares abastecidos</dt><dd id="eq-homes">—</dd></div>
+            <div><dt id="eq-co2-label">CO₂ evitado</dt><dd id="eq-co2">—</dd></div>
+          </dl>
+          <p class="assumption">Supuestos: un hogar consume <span id="assumption-home"></span>;
+            cada kWh eólico evita <span id="assumption-co2"></span>.</p>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Estimación anual (Weibull)</h2>
+          </div>
+          <div class="control">
+            <div class="control-head">
+              <label for="weibull-k">Forma k de Weibull</label>
+              <button type="button" class="info" aria-expanded="false" aria-controls="weibull-k-help" aria-label="Información sobre el parámetro k">ⓘ</button>
+              <output id="weibull-k-out" for="weibull-k"></output>
+            </div>
+            <input type="range" id="weibull-k" min="1" max="4" step="0.1">
+            <p class="help" id="weibull-k-help" hidden>Describe qué tan variable es el viento a lo largo del año. k = 2 (distribución de Rayleigh) es típico; k mayor significa un viento más constante.</p>
+          </div>
+          <p class="panel-sub" id="annual-context"></p>
+          <dl class="stats">
+            <div><dt>Energía anual</dt><dd id="annual-energy">—</dd></div>
+            <div><dt>Factor de capacidad</dt><dd id="annual-cf">—</dd></div>
+            <div><dt>Hogares</dt><dd id="annual-homes">—</dd></div>
+            <div><dt>CO₂ evitado al año</dt><dd id="annual-co2">—</dd></div>
+          </dl>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===================== Cómo funciona ===================== -->
+  <section class="how" id="como-funciona" aria-labelledby="how-title">
+    <h2 id="how-title">Cómo funciona</h2>
+
+    <details open>
+      <summary>La potencia depende del <em>cubo</em> de la velocidad</summary>
+      <p>El viento es aire en movimiento: tiene masa y velocidad, y por lo tanto energía cinética. La potencia que atraviesa el rotor es:</p>
+      <p class="formula">P<sub>viento</sub> = ½ · ρ · A · v<sup>3</sup></p>
+      <p>donde ρ es la densidad del aire, A = π·(D/2)<sup>2</sup> el área barrida y v la velocidad. Aparece v<sup>3</sup> porque la energía cinética de cada kilogramo crece con v<sup>2</sup> y, además, por segundo pasa una cantidad de aire proporcional a v.</p>
+      <p class="callout">Duplicar el viento multiplica la potencia por 2<sup>3</sup> = <strong>8</strong>. Pasar de 5 a 6 m/s (un 20 % más) da un 73 % más de potencia.</p>
+      <p>La turbina entrega solo una parte:</p>
+      <p class="formula">P<sub>eléctrica</sub> = P<sub>viento</sub> · Cp · η &nbsp;&nbsp;(limitada a P<sub>nominal</sub>)</p>
+      <p>La curva de potencia tiene cuatro zonas: nada bajo la <strong>velocidad de arranque</strong> (3 m/s), crecimiento cúbico, una meseta en la <strong>potencia nominal</strong> y cero a partir de la <strong>velocidad de corte</strong> (25 m/s), cuando la turbina se detiene para protegerse.</p>
+    </details>
+
+    <details>
+      <summary>¿Qué es el límite de Betz?</summary>
+      <p>Una turbina no puede frenar el viento por completo: si lo hiciera, el aire se acumularía detrás del rotor y dejaría de pasar. Albert Betz demostró en 1919 que, como máximo, se puede extraer</p>
+      <p class="formula">Cp<sub>máx</sub> = 16/27 ≈ 0.593</p>
+      <p>es decir, el 59.3 % de la potencia del viento, y eso se logra cuando el viento sale del rotor a un tercio de su velocidad de entrada. Las turbinas reales alcanzan Cp ≈ 0.45–0.50. El indicador <em>Cp efectivo</em> muestra qué fracción se aprovecha realmente; cae por encima de la velocidad nominal porque la turbina limita su potencia a propósito.</p>
+    </details>
+
+    <details>
+      <summary>Altitud, temperatura y densidad del aire</summary>
+      <p>La potencia es proporcional a la densidad ρ: un aire más denso tiene más masa que empujar las aspas. Con la atmósfera estándar y la ley de los gases ideales:</p>
+      <p class="formula">p(h) = 101325 · (1 − 2.25577×10<sup>−5</sup> · h)<sup>5.25588</sup> &nbsp;[Pa]</p>
+      <p class="formula">ρ = p / (R · T), &nbsp; R = 287.05 J/(kg·K), &nbsp; T = T<sub>°C</sub> + 273.15</p>
+      <p>Al subir, la presión baja (hay menos aire encima): a 1000 m, ρ ≈ 1.09 kg/m³ en lugar de 1.225 kg/m³, un 11 % menos de potencia. Al calentarse, el aire se expande y se vuelve menos denso: pasar de 0 °C a 30 °C reduce la potencia cerca de un 10 %.</p>
+    </details>
+
+    <details>
+      <summary>Por qué las torres altas producen más</summary>
+      <p>El suelo, los árboles y los edificios frenan el viento. Lejos del suelo ese frenado es menor, y la velocidad crece con la altura según la ley de potencia:</p>
+      <p class="formula">v<sub>buje</sub> = v<sub>10 m</sub> · (H / 10 m)<sup>α</sup></p>
+      <p>Con campo abierto (α = 0.14), a 80 m el viento es un 34 % más rápido que a 10 m, y como la potencia va con el cubo, la turbina recibe 2.4 veces más potencia. En terrenos rugosos (α grande) la torre importa todavía más.</p>
+      <table class="table">
+        <caption>Exponente α según el terreno</caption>
+        <thead><tr><th scope="col">Terreno</th><th scope="col">α</th></tr></thead>
+        <tbody id="alpha-table"></tbody>
+      </table>
+    </details>
+
+    <details>
+      <summary>Factor de capacidad</summary>
+      <p class="formula">FC = Energía producida / (P<sub>nominal</sub> × horas)</p>
+      <p>Compara la energía real con la que se obtendría si la turbina funcionara todo el tiempo a plena potencia. Como el viento varía, los parques reales tienen factores de capacidad de entre <strong>25 % y 45 %</strong> (los marinos, en el extremo alto). Un FC bajo no significa que la turbina sea mala: puede ser que el sitio tenga poco viento o que el generador sea grande para ese viento.</p>
+    </details>
+
+    <details>
+      <summary>Viento en el tiempo y estimación anual</summary>
+      <p>En el modo Tiempo el viento a 10 m se genera cada 10 minutos como</p>
+      <p class="formula">v(t) = v<sub>media</sub> · (1 + A<sub>diaria</sub> · sin(2π·(t − 9)/24)) + turbulencia(t)</p>
+      <p>El término senoidal tiene su máximo a las 15:00 (el sol calienta el suelo y mezcla el aire). La turbulencia es un proceso de Ornstein–Uhlenbeck: un ruido que "recuerda" su valor anterior durante aproximadamente una hora, de modo que no hay saltos bruscos. La energía se acumula como E = Σ P · Δt con Δt = 10 min.</p>
+      <p>Para la estimación anual se supone que la velocidad en el buje sigue una distribución de Weibull con forma k y escala c = v<sub>media</sub> / Γ(1 + 1/k):</p>
+      <p class="formula">E<sub>anual</sub> = 8760 h · Σ P(v) · f(v) · Δv &nbsp;&nbsp;(0 a 30 m/s, Δv = 0.1 m/s)</p>
+    </details>
+
+    <details>
+      <summary>Simplificaciones del modelo</summary>
+      <ul>
+        <li>Cp y η son constantes; en una turbina real Cp cambia con la velocidad y el control de paso (<em>pitch</em>) de las aspas.</li>
+        <li>La transición a la potencia nominal es un corte brusco (en la realidad es una curva suave) y no hay histéresis en la velocidad de corte.</li>
+        <li>El perfil de viento usa la ley de potencia con α fijo; no considera estabilidad atmosférica, relieve ni obstáculos cercanos.</li>
+        <li>La densidad usa la atmósfera estándar y aire seco (sin humedad) a la altitud del terreno, no a la altura del buje.</li>
+        <li>La serie de viento es sintética: no son datos meteorológicos reales.</li>
+        <li>El viento de cada paso de 10 min se toma como constante durante el paso; no se modela la inercia del rotor.</li>
+        <li>En el parque todas las turbinas reciben el mismo viento y las pérdidas por estela son un porcentaje fijo (solo con más de una turbina).</li>
+        <li>La estimación anual aplica la velocidad media del deslizador (llevada a la altura del buje) a una distribución de Weibull e ignora la variación diaria.</li>
+        <li>No se incluyen indisponibilidad por mantenimiento, pérdidas en la red, hielo ni suciedad en las aspas.</li>
+        <li>Las equivalencias (hogares y CO₂) usan supuestos fijos y editables en <code>js/presets.js</code>.</li>
+      </ul>
+    </details>
+  </section>
+
+  <footer class="site-footer">
+    <p>Simulador didáctico con supuestos simplificados. Los escenarios son ilustrativos, no datos medidos.</p>
+  </footer>
+</body>
+</html>
